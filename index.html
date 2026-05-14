@@ -2,85 +2,173 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="referrer" content="origin-when-cross-origin">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- The browser tab title - tells users and search engines what this page is-->
+    
     <title> Taxi Compass - Find street-hailable taxis near you</title>
 
-    <!-- Leaflet CSS + JS -->
+    <!-- Tells browsers to send a limited Referer header when fetching tiles. This prevents 403 blocks from OpenStreetMap-dervied tile servers.-->
+    <meta name="referrer" content="origin-when-cross-origin">
+
+    <!-- Leaflet CSS: stles the map UI (zoom buttons, attribution, etc.) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+    <!-- Leaflet Javascript: provides the L.map, L.tileLayer, L.circleMarker, etc.-->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>"
 
     <style>
+        /* Remove default page margins and make the map fill the whole screen */
         html, body, #map {
             height: 100%;
             margin: 0;
             padding: 0;
         }
+        /* A subtle title overlay in the top-right corner of the map */
         .map-title {
             position: absolute;
             top: 10px;
-            right: 10px;  /* moved to top-right corner */
-            z-index: 1000;
-            background: rgba(255,255,255,0.9);
+            right: 10px;
+            z-index: 1000;  /* appears above the map tiles */
+            background: rgba(255,255,255,0.9); /* semi-transparent white */
             padding: 8px 14px;
             border-radius: 6px;
             font-family: system-ui, -apple-system, sans-serif;
             font-size: 14px;
             font-weight: 500;
             box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-            pointer-events: none;
+            pointer-events: none; /* lets clicks pass through to the map underneath */
         }
     </style>
 </head>
 <body>
+
+    <!-- This div becomes the interactive Leaflet map-->
     <div id="map"></div>
+
+    <!-- The floating title badge -->
     <div class="map-title">🚖 Taxi Compass - street-hailable taxis, made visible </div>
 
     <script>
+        // ---------------------------------------------------------
+        // 1. CREATE THE LEAFTLET MAP
+        // ---------------------------------------------------------
+        // L.map('map') attaches the map to the <div id="map">
+        // .setView([latitude, longitude], zoomLevel) centers the map on Singapore
         // Initialise map centered on Singapore
         const map = L.map('map').setView([1.3521, 103.8198], 13);
 
-
-        // OpenStreetMap tiles
+        // ---------------------------------------------------------
+        // 2. ADD A TILE LAYER (the visual map background)
+        // ---------------------------------------------------------
+        // CartoDB's "light_all" tiles are used because they work on all browsers (Chrome, FireFox, Edge, Brave, Safari) without requiring a specific Referer header.
+        // Use CartoDB tiles for cross-browser compatibility (no Referer issues)
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
             attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap </a> contributors, © <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 19
+            subdomains: 'abcd',  // allows the browser to load tiles from multiple subdomains in parallel
+            maxZoom: 19          // how far the user can zoom in
         }).addTo(map);
 
-        console.log('Day 1: Map is live. Tomorrow we fetch the Taxi Availability API.');
 
-        // Day 2: Fetch live taxi data from LTA via data.gov.sg
+        // ----------------------------------------------------------
+        // 3. CREATE A LAYER GROUP FOR TAXI MARKERS
+        // ----------------------------------------------------------
+        // A LayerGroup holds all the taxi dots together. This makes it easy to clear all markers at once and redraw new ones later.
+        // Global layer group to hold all taxi markers
+        const taxiLayerGroup = L.layerGroup().addTo(map);
+
+
+        // ----------------------------------------------------------
+        // 4. FETCH TAXI DATA FROM THE LIVE API AND PLOT IT
+        // ----------------------------------------------------------
+        // async function lets us use "await" to wait for the API reply without freezing the browser.
+        // Async function to fetch taxi data and plot it
         async function fetchTaxis() {
-            try {
-              const response = await fetch('https://api.data.gov.sg/v1/transport/taxi-availability');
-              if (!response.ok) {
+          try {
+            // Send a GET requets to the Taxi Availability API (no API key needed)
+            const response = await fetch('https://api.data.gov.sg/v1/transport/taxi-availability');
+
+            // If the server returns an error code (404, 500, etc.) stop here
+            if (!response.ok) {
                 throw new Error(`HTTP error ${response.status}`);
-              }
-              const data = await response.json();
-              const features = data.item.features; // array of taxi GeoJSON points
-              console.log('Taxi features array:', features);
-              console.log('Number of taxis available:', features.length);
-              console.log('First taxi coordinates [lng, lat]:', features[0].geometry.coordinates);
-
-              // Day 3: Plot taxis as circle markers
-              taxiLayerGroup.clearLayers(); // remove old markers if we ever re-fetch
-
-              features.forEach(feature => {
-                const [lng, lat] = feature.geometry.coordinates;       // unpack in API order
-                L.circleMarker([lat, lng], {                           // repack in Leaflet order
-                    radius: 4,
-                    fillColor: "#0077b6",
-                    color: "#005f8c",
-                    weight: 1,
-                    fillOpacity: 0.8
-                }).addTo(taxiLayerGroup);
-              });
-            } catch (error) {
-                console.error('failed to fetch taxi data:', error);
             }
-        }
-        
 
+
+            // Parse the JSON response body into a JavaScript object
+            const data = await response.json();
+
+            // --------------------------------------------------------
+            // 5. UNDERSTANDING THE API RESPONSE STRUCTURE
+            // --------------------------------------------------------
+            // The response is a GeoJSON FeatureCollection:
+            //
+            // {
+            //   "type": "FeatureCollection",
+            //   "features": [                         // an array of feature objects
+            //      {
+            //       "type": "Feature",
+            //       "geometry": {
+            //          "type": "MultiPoint",          // all taxi points packed together
+            //          "coordinates": [               // AN ARRAY OF ARRAYS
+            //             [103.619,1.275],            // each element is [longitude, latitued]
+            //             [103.620, 1.280],
+            //             ...
+            //             ]
+            //           },
+            //           "properties": {
+            //              "timestamp": "..."          //
+            //              "taxi_count" : 3056,        // total number of available taxis
+            //              "api_info": {"status": "healthy"}
+            //           }
+            //       }
+            //    ]
+            // }
+            // KEY INSIGHT: "coordinates" is an array of [lng, lat] pairs,
+            // NOT a flat list [lng, lat, lng, lat, ...]
+            // That's why the flat-array loop failed and we now use a "for... of" loop.
+
+
+            const features = data.features;                  // the array of features (usually just one)
+            const feature = features[0];                     // the first (and only) feature
+            const coords = feature.geometry.coordinates;     // array of [lng, lat] arrays
+            
+            console.log('Number of taxis:', coords.length);  // for debugging
+
+            // Remove any previous markers (important later when we add a refresh button)
+
+            taxiLayerGroup.clearLayers();
+
+            // ----------------------------------------------------------
+            // 6. PLOT EACH TAXI AS A CIRCLE MARKER
+            // ----------------------------------------------------------
+            // "for ... of" loops over each element of the coords array.
+            // Each element is itself an array of two numbers: [lng, lat].
+
+
+
+
+            for (const pair of coords) {
+                const lng = pair[0]; // longitude (e.g. 103.85)
+                const lat = pair[1]; // latitude  (e.g. 1.28)
+            }
+                // Leaflet requires [latitude, longitude] order, so we swap them.
+                // API gives [lng, lat] -> Leaflet needs [lat, lng].
+                L.circleMarker([lat, lng], {
+                    radius: 4,                  // size of the dot in pixles
+                    fillColor: "#0077b6",       // fill color (blue)
+                    color: "#005f8c",           // border color (darker blue)
+                    weight: 1,                  // border thickness
+                    fillOpacity: 0.8            // slight transparency so dense clusters look softer
+                }).addTo(taxiLayerGroup);       // add the marker to our layer group
+            }
+          } catch (error) {
+            // If anything above fails (network down, bad JSON, etc.), log it
+            console.error('Failed to fetch taxi data:', error);
+          }
+        }
+
+        // ---------------------------------------------------
+        // 7. RUN THE FETCH FUNCTION AS SOON AS THE PAGE LOADS
+        // ---------------------------------------------------
         fetchTaxis();
     </script>
 </body>
