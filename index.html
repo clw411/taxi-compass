@@ -3,37 +3,88 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Taxi Compass – Working</title>
+  <title>Taxi Compass - Live API</title>
+  <meta name="referrer" content=""origin-when-cross-origin">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     html, body, #map { height: 100%; margin: 0; }
+    #status {
+        position: absolute; bottom: 20px; left: 10px; z-index: 2000;
+        background: white; padding: 8px 12px; border: 2px solid #333;
+        font-family: monospace; font-size: 14px;
+    }
+    #refresh-btn {
+        position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+        z-index: 1000; padding: 10px 20px; background: #0077b6; color: white;
+        border: none; border-radius: 6px; font-size: 16px; font-weight: bold;
+        cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        font-family: system-ui, sans-serif;
+    }
+    #refresh-btn:disabled { opacity: 0.6; cursor: default; }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="status">⏳ Loading... </div>
+  <button id="refresh-btn">🔄 Refresh Taxis </button>
+
+
   <script>
+    const statusEl = document.getElementById('status');
+    function setStatus(msg) { statusEl.textContent = '🟡 ' + msg; }
+
+
+    // 1. Map
     const map = L.map('map').setView([1.3521, 103.8198], 13);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: 'OSM, CARTO', subdomains: 'abcd', maxZoom: 19
+      attribution: '© OSM, © CARTO',
+      maxZoom: 19
     }).addTo(map);
 
-    const taxiLayer = L.layerGroup().addTo(map);
+    // 2. Layer group for taxis (THIS LINE MUST BE PRESENT)
+    const taxiLayerGroup = L.layerGroup().addTo(map);
 
-    async function loadTaxis() {
-      const res = await fetch('https://api.data.gov.sg/v1/transport/taxi-availability');
-      const data = await res.json();
-      const coords = data.features[0].geometry.coordinates;
-
-      taxiLayer.clearLayers();
-      for (const pair of coords) {
-        L.circleMarker([pair[1], pair[0]], { // Leaflet: [lat, lng]
-          radius: 4, fillColor: '#0077b6', color: '#005f8c', weight: 1, fillOpacity: 0.8
-        }).addTo(taxiLayer);
+    // 3. Fetch with timeout
+    async function fetchTaxis() {
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timed out after 5 seconds')), 5000)
+      );
+      try {
+        const res = await Promise.race([
+        fetch('https://api.data.gov.sg/v1/transport/taxi-availability'),
+        timeout
+        ]);
+        if (!res.ok) throw new Error (`HTTP ${res.status}`);
+        const data = await res.json();
+        const coords = data.features[0].geometry.coordinates;
+        taxiLayerGroup.clearLayers();
+        let count = 0;
+        for (const pair of coords) {
+          const lng = pair[0];
+          const lat = pair[1];
+          L.circleMarker([lat, lng], {
+            radius: 4, fillColor: '#oo77b6', color: '#005f8c', weight: 1, fillOpacity: 0.8}).addTo(taxiLayerGroup);
+          count++;
+        }
+        setStatus('✅' + count + 'taxis loaded (live)');
+      } catch (e) {
+        setStatus('❌ ' + e.message);
       }
     }
 
-    loadTaxis();
+
+    // 4. Load and refresh
+    fetchTaxis();
+
+    document.getElementById('refresh-btn').addEventListener('click', async () => {
+        document.getElementById('refresh-btn').textContent = '⏳ Refreshing…';
+        document.getElementById('refesh-btn').disabled = true;
+        setStatus('Fetching...');
+        await fetchTaxis();
+        document.getElementById('refresh-btn').textContent = '🔄 Refresh Taxis';
+        document.getElementById('refresh-btn').disabled = false;
+    });
   </script>
 </body>
 </html>
