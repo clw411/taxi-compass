@@ -61,12 +61,26 @@
               console.log('Taxi features array:', features);
               console.log('Number of taxis available:', features.length);
               console.log('First taxi coordinates [lng, lat]:', features[0].geometry.coordinates);
+
+              // Day 3: Plot taxis as circle markers
+              taxiLayerGroup.clearLayers(); // remove old markers if we ever re-fetch
+
+              features.forEach(feature => {
+                const [lng, lat] = feature.geometry.coordinates;       // unpack in API order
+                L.circleMarker([lat, lng], {                           // repack in Leaflet order
+                    radius: 4,
+                    fillColor: "#0077b6",
+                    color: "#005f8c",
+                    weight: 1,
+                    fillOpacity: 0.8
+                }).addTo(taxiLayerGroup);
+              });
             } catch (error) {
                 console.error('failed to fetch taxi data:', error);
             }
         }
         
-        // Call it on page load
+
         fetchTaxis();
     </script>
 </body>
