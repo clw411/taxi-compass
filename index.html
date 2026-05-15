@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Taxi Compass - Live API</title>
+  <title>Taxi Compass - Day 5</title>
   <meta name="referrer" content=""origin-when-cross-origin">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -22,10 +22,38 @@
         font-family: system-ui, sans-serif;
     }
     #refresh-btn:disabled { opacity: 0.6; cursor: default; }
+
+    .map-title {
+      position: absolute; top: 10px; right: 10px; z-index: 1000;
+      background: rgba(255,255,255,0.9); padding: 8px 14px; 
+      border-radius: 6px; font-family: system-ui, sans-serif;
+      font-size: 14px; font-weight: 500;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+
+  <!-- Taxi count badge (inline style to absolutely guarantee visibility)-->
+  <div id="taxi count"
+        style="
+          position: absolute;
+          top: 70px;
+          right: 10px;
+          z-index: 9999;
+          background: rgba(0,0,0,0.75);
+          color: white;
+          padding: 14px 28px;
+          border-radius: 4px;
+          font-family: system-ui, sans-serif;
+          font-size: 18px;
+          font-weight: 500;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+          white-space: nowrap;
+          ">
+        🚖<span id="count-number">-</span> taxis available</div>
   <div id="status">⏳ Loading... </div>
   <button id="refresh-btn">🔄 Refresh Taxis </button>
 
@@ -69,6 +97,7 @@
             radius: 4, fillColor: '#oo77b6', color: '#005f8c', weight: 1, fillOpacity: 0.8}).addTo(taxiLayerGroup);
           count++;
         }
+        document.getElementById('count-number').textContent = count;
         setStatus('✅ ' + count + ' taxis loaded (live) ');
       } catch (e) {
         if (e. name === 'AbortError') {
@@ -109,7 +138,7 @@
 
     refreshBtn.addEventListener('click', async () => {
         if (refreshBtn.disabled) return;                // already in cooldown or fetching
-
+        
         refreshBtn.textContent = '⏳ Fetching…';
         refreshBtn.disabled = true;
         setStatus('Fetching...');
