@@ -159,6 +159,86 @@
     }   // yellow dot prefix for visibility
 
 
+    // ==============================================================
+    // 🌐 NEW GLOBAL ENGINE STORAGE (Tuesday Stream Integration)
+    // ===============================================================
+    let liveWeatherStations = []; // Array for real-time thermometer strings
+    let liveTaxiLocations = [];   // Array for spatial tracking calculations
+    let liveForecastAras = [];    // Array for v2 regional weather forecast text strings 
+
+    // ===============================================================
+    // ☁️ NEW API FETCH ENGINE LINES (Tuesday Stream Integration)
+    // ===============================================================
+
+    // Fetch Engine 1: Real-time air temperature metrics
+    async function getWeatherData() {
+        try {
+            console.log("🌡️ FETCHING LIVE WEATHER TEMPERATURE DATA...");
+            const response = await fetch('https://api.data.gov.sg/v1/environment/air-temperature');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+            const data = await response.json();
+            const stations = data.metadata.stations;
+            const readings = data.items[0].readings;
+
+            liveWeatherStations = stations.map(station => {
+                const reading = readings.find(r => r.station_id === station.id);
+                return {
+                    id: station.id,
+                    name: station.name,
+                    lat: station.location.latitude,
+                    lng: station.location.longitude,
+                    temp: reading ? reading.value : null
+                };
+            }).filter(s => s.temp !== null);
+
+            console.log(`📦 TEMPERATURE METRICS DATA RECEIVED. Loaded ${liveWeatherStations.length} reporting towers.`);
+        } catch (error) {
+            console.error("❌ Error fetching Air Temperature:", error);
+        }
+    }
+
+    // Fetch Engine 2: Real-time spatial tracking arrays for taxi coordinates
+    async function getTaxiData() {
+        try {
+            console.log("🚖 FETCHING LIVE TAXI GEOLOCATION DATA...");
+            const response = await fetch('https://api.data.gov.sg/v1/transport/taxi-availability');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+            const data = await response.json();
+            liveTaxiLocations = data.features[0].geometry.coordinates;
+            console.log(`📦 TAXI LOCATION METRICS RECEIVED. Buffered ${liveTaxiLocations.length} active coordinates.`);
+        } catch (error) {
+            console.error("❌ Error fetching Taxi Locations:", error);
+        }
+    }
+
+    // Fetch Engine 3: Modernized v2 2-Hour verbal forecast sectors
+    async function getWeatherForecastData() {
+        try {
+            console.log("☁️ FETCHING LIVE v2 2-HOUR WEATHER FORECASTS...");
+            const response = await fetch('https://api-open.data.gov.sg/v2/real-time/api/two-hr-forecast');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+            const jsonResult = await response.json();
+            const metadata = jsonResult.data.area_metadata;
+            const forecasts = jsonResult.data.items[0].forecasts;
+
+            liveForecastAreas = metadata.map(area => {
+                const matchingForecast = forecasts.find(f => f.area === area.name);
+                return {
+                    name: area.name,
+                    lat: area.label_location.latitude,
+                    lng: area.label_location.longitude,
+                    forecast: matchingForecast ? matchingForecast.forecast : "Data Unavailable"
+                };
+            });
+
+            console.log(`📦 v2 FORECAST DATA RECEIVED. Loaded ${liveForecastAreas.length} planning sectors.`);
+        } catch (error) {
+            console.error("❌ Error fetching v2 Weather Forecast:", error);
+        }
+    }
     // ----------------------------------------------------------------
     // 1. Map setup
     // ----------------------------------------------------------------
@@ -251,6 +331,11 @@
     // Initial load - fetch taxis as soon as the page opens
     // 4. Initial load
     fetchTaxis();
+
+    // Fire the new concurrent background data pipelines
+    getWeatherData();
+    getTaxiData();
+    getWeatherForecastData();
 
 
     // --------------------------------------------------------
