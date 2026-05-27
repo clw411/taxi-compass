@@ -122,7 +122,7 @@
   <div class="map-title">🚖 Taxi Compass — street-hailable taxis, made visible</div>
 
   <!-- Taxi count badge - solid, dark box at top-right, shows total available taxis. (inline style to absolutely guarantee visibility with CSS conflicts)-->
-  <div id="taxi count"
+  <div id="taxi-count"
         style="
           position: absolute;
           top: 70px;
@@ -161,10 +161,16 @@
 
     // ==============================================================
     // 🌐 NEW GLOBAL ENGINE STORAGE (Tuesday Stream Integration)
-    // ===============================================================
-    let liveWeatherStations = []; // Array for real-time thermometer strings
-    let liveTaxiLocations = [];   // Array for spatial tracking calculations
-    let liveForecastAras = [];    // Array for v2 regional weather forecast text strings 
+    // ==============================================================
+
+    // Caches raw NEA reporting station metadata and real-time temperature readings
+    let liveWeatherStations = [];
+
+    // Stores the raw geographic [lng, lat] coordinate arrays streams from LTA
+    let liveTaxiLocations = [];
+
+    // Caches regional 2-hour verbal forecast synopses mapped to sector centers
+    let liveForecastAras = []; 
 
     // ===============================================================
     // ☁️ NEW API FETCH ENGINE LINES (Tuesday Stream Integration)
@@ -174,14 +180,20 @@
     async function getWeatherData() {
         try {
             console.log("🌡️ FETCHING LIVE WEATHER TEMPERATURE DATA...");
+
+            // Establish network request to the public NEA climate monitoring endpoint
             const response = await fetch('https://api.data.gov.sg/v1/environment/air-temperature');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
             const data = await response.json();
+
+            // Extract the separate geographic station logs and the current sensor readings
             const stations = data.metadata.stations;
             const readings = data.items[0].readings;
 
+            // Deep-map arrays to pair structural metadata directly with active climate readings
             liveWeatherStations = stations.map(station => {
+                // Cross-reference sensor IDs to stitch matching telemetry together
                 const reading = readings.find(r => r.station_id === station.id);
                 return {
                     id: station.id,
@@ -190,7 +202,7 @@
                     lng: station.location.longitude,
                     temp: reading ? reading.value : null
                 };
-            }).filter(s => s.temp !== null);
+            }).filter(s => s.temp !== null); // Drop offline or non-reporting stations from memory
 
             console.log(`📦 TEMPERATURE METRICS DATA RECEIVED. Loaded ${liveWeatherStations.length} reporting towers.`);
         } catch (error) {
@@ -198,33 +210,44 @@
         }
     }
 
-    // Fetch Engine 2: Real-time spatial tracking arrays for taxi coordinates
+    // Fetch Engine 2: Streams real-time spatial coordinate clusters for active commuter fleets
     async function getTaxiData() {
         try {
             console.log("🚖 FETCHING LIVE TAXI GEOLOCATION DATA...");
+
+            // Connect to LTA's real-time transit telemetry broadcast
             const response = await fetch('https://api.data.gov.sg/v1/transport/taxi-availability');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
             const data = await response.json();
+
+            // Drill straight into GeoJSON feature nodes to map raw spatial [lng, lat] pairings
             liveTaxiLocations = data.features[0].geometry.coordinates;
+
             console.log(`📦 TAXI LOCATION METRICS RECEIVED. Buffered ${liveTaxiLocations.length} active coordinates.`);
         } catch (error) {
             console.error("❌ Error fetching Taxi Locations:", error);
         }
     }
 
-    // Fetch Engine 3: Modernized v2 2-Hour verbal forecast sectors
+    // Fetch Engine 3: Streams and extracts modern v2 2-Hour verbal forecast sectors
     async function getWeatherForecastData() {
         try {
             console.log("☁️ FETCHING LIVE v2 2-HOUR WEATHER FORECASTS...");
+
+            // Query the modernized GovTech real-time open-data meterological stream
             const response = await fetch('https://api-open.data.gov.sg/v2/real-time/api/two-hr-forecast');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
             const jsonResult = await response.json();
+
+            // Separate spatial polygon sector headers from the situational forecast notes
             const metadata = jsonResult.data.area_metadata;
             const forecasts = jsonResult.data.items[0].forecasts;
 
+            // Iterate through every official urban sector to cross-stitch verbal climate tags
             liveForecastAreas = metadata.map(area => {
+                // Pinpoint the text forecast string matching this specific region name
                 const matchingForecast = forecasts.find(f => f.area === area.name);
                 return {
                     name: area.name,
