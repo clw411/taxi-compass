@@ -172,6 +172,10 @@
     // Caches regional 2-hour verbal forecast synopses mapped to sector centers
     let liveForecastAras = []; 
 
+    // Leaflet Layer Groups to manage the visual rendering of markers on the map screen
+    let weatherLayerGroup = L.layerGroup();
+    let forecastLayerGroup = L.layerGroup();
+
     // ===============================================================
     // ☁️ NEW API FETCH ENGINE LINES (Tuesday Stream Integration)
     // ===============================================================
@@ -205,6 +209,13 @@
             }).filter(s => s.temp !== null); // Drop offline or non-reporting stations from memory
 
             console.log(`📦 TEMPERATURE METRICS DATA RECEIVED. Loaded ${liveWeatherStations.length} reporting towers.`);
+
+            // UI Trigger: Hand the freshly cached dataset over to the visual renderer
+            renderWeatherMarkers();
+
+            // Paint the synchronized layer canvas onto the visible Leaflet map screen
+            weatherLayerGroup.addTo(map);
+
         } catch (error) {
             console.error("❌ Error fetching Air Temperature:", error);
         }
@@ -258,9 +269,80 @@
             });
 
             console.log(`📦 v2 FORECAST DATA RECEIVED. Loaded ${liveForecastAreas.length} planning sectors.`);
+
+            // UI Trigger: Hand the 47 planning sectors over to the visual renderer
+            renderForecastMarkers();
+
+            // Paint the synchronized Forecast canvas layer onto the active map screen
+            forecastLayerGroup.addTo(map);
+
         } catch (error) {
             console.error("❌ Error fetching v2 Weather Forecast:", error);
         }
+    }
+
+    // UI Engine 1: Translates cached weather telemetry into visual map typography
+    function renderWeatherMarkers() {
+        // Clear out any old markers from the canvas before drawing fresh ones
+        weatherLayerGroup.clearLayers();
+
+        // Loop through every active reporting tower stored in our global cache
+        liveWeatherStations.forEach(station => {
+            // Define custom, borderless HTML styling to make the temperature read cleanly
+            const labelHtml = `<div style="
+                background: rgba(255, 255, 255, 0.9);
+                border: 1px solid #333;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 11px;
+                color: #111;
+                white-space: nowrap;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            ">${station.name}: ${station.temp}°C</div>`;
+
+            // Create a custom Leaflet DivIcon to inject our custom HTML text onto the map, with auto-scaling boundaries
+            const textIcon = L.divIcon({
+                className: 'custom-temp-label',
+                html: labelHtml,
+                iconSize: [null, null], // Allows the wrapper container to scale dynamically
+                iconAnchor: [60, 10]    // Slightly shifts the anchor to center the wider badge 
+            });
+
+            // Instantiate the marker at the tower's lat/lng and attach it to our weather layer canvas
+            L.marker([station.lat, station.lng], { icon: textIcon })
+             .addTo(weatherLayerGroup);
+        });
+    }
+
+    // UI Engine 2: Translates cached regional V2 forecasts into interactive map popups
+    function renderForecastMarkers() {
+        // Clear out any old forecast visual nodes before redrawing fresh ones
+        forecastLayerGroup.clearLayers();
+
+        // Loop through all 47 official planning sectors stored in our global cache
+        liveForecastAreas.forEach(area => {
+            // Set up a neat interactive visual target node (a soft blue circle)
+            const marker = L.circleMarker([area.lat, area.lng], {
+                radius: 8,
+                fillColor: "#3388ff",
+                color: "#1a53ff",
+                weight: 2,
+                opacity: 0.8, 
+                fillOpacity: 0.4
+            });
+
+            // Bind an interactive click popup displaying structured regional weather text
+            marker.bindPopup(`
+                <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4;">
+                    <strong style="color: #222; font-size: 13px;">${area.name} Sector</strong><br/>
+                    <span style="color: #555;">2-Hr Forecast:</span>
+                    <strong style="color: #0066cc;">${area.forecast}</strong>
+                </div>
+            `);
+
+            // Attach this interactive node to our forecast layer canvas
+            marker.addTo(forecastLayerGroup);
+        });
     }
     // ----------------------------------------------------------------
     // 1. Map setup
