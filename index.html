@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Taxi Compass - Day 6</title>
+  <title>Taxi Compass - Day 11</title>
 
   <!-- Referrer policy ensures tile servers get the Referer header, avoiding 403 errors-->
   <meta name="referrer" content="origin-when-cross-origin">
@@ -176,6 +176,9 @@
     let weatherLayerGroup = L.layerGroup();
     let forecastLayerGroup = L.layerGroup();
 
+    // Leaflet Heat Layer handle to manage the real-time transit density overlay
+    let taxiHeatLayer = null;
+
     // ===============================================================
     // ☁️ NEW API FETCH ENGINE LINES (Tuesday Stream Integration)
     // ===============================================================
@@ -221,21 +224,32 @@
         }
     }
 
-    // Fetch Engine 2: Streams real-time spatial coordinate clusters for active commuter fleets
+    // Fetch Engine 2: Pulls live real-time vehicle coordinates from LTA Transit Servers
     async function getTaxiData() {
+        console.log("🚖 FETCHING LIVE TAXI GEOLOCATION DATA...");
         try {
-            console.log("🚖 FETCHING LIVE TAXI GEOLOCATION DATA...");
-
-            // Connect to LTA's real-time transit telemetry broadcast
             const response = await fetch('https://api.data.gov.sg/v1/transport/taxi-availability');
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
             const data = await response.json();
 
-            // Drill straight into GeoJSON feature nodes to map raw spatial [lng, lat] pairings
-            liveTaxiLocations = data.features[0].geometry.coordinates;
+            // Extract the raw coordinates array from the LTA payload structure
+            const coordinates = data.features[0].geometry.coordinates;
+
+            // Flush the previous memory cache before buffering fresh data
+            liveTaxiLocations = [];
+
+            // Loop through and cache the GeoJSON format [Lng, Lat] into standard object parameters
+            coordinates.forEach(coord => {
+                liveTaxiLocations.push({
+                    lat: coord[1],  // LTA standardizes longitude first, latitude second
+                    lng: coord[0]
+                });
+            });
 
             console.log(`📦 TAXI LOCATION METRICS RECEIVED. Buffered ${liveTaxiLocations.length} active coordinates.`);
+
+            // UI Trigger: Pass the fresh vehicle telemetry payload to the thermal heatmap renderer
+            renderMicroTaxiAssets();
+
         } catch (error) {
             console.error("❌ Error fetching Taxi Locations:", error);
         }
@@ -314,34 +328,94 @@
         });
     }
 
-    // UI Engine 2: Translates cached regional V2 forecasts into interactive map popups
+    // UI Engine 2 Upgraded: Translates text forecasts into dynamic visual emojis
     function renderForecastMarkers() {
         // Clear out any old forecast visual nodes before redrawing fresh ones
         forecastLayerGroup.clearLayers();
 
         // Loop through all 47 official planning sectors stored in our global cache
         liveForecastAreas.forEach(area => {
-            // Set up a neat interactive visual target node (a soft blue circle)
-            const marker = L.circleMarker([area.lat, area.lng], {
-                radius: 8,
-                fillColor: "#3388ff",
-                color: "#1a53ff",
-                weight: 2,
-                opacity: 0.8, 
-                fillOpacity: 0.4
+            // Contextual Parser: Match live API text keywords to a distinct user emoji
+            let emoji = "☀️"; // Default sunny/clear fallback
+            const condition = area.forecast.toLowerCase();
+
+            if (condition.includes("shower") || condition.includes("rain")) {
+                emoji = "🌧️";
+            } else if (condition.includes("thunder")) {
+                emoji = "⛈️";
+            } else if (condition.includes("cloud")) {
+                emoji = "☁️";
+            } else if (condition.includes("wind") || condition.includes("haze")) {
+                emoji = "💨";
+            } else if (condition.includes("mist") || condition.includes("fog")) {
+                emoji = "🌫️";
+            }
+
+            // Create a borderless typography container for our emoji asset
+            const emojiHtml = `<div style="
+                font-size: 20px;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
+                cursor: pointer;
+            ">${emoji}</div>`;
+
+            // Instantiate a Leaflet text icon to house our dynamic emoji
+            const emojiIcon = L.divIcon({
+                className: 'custom-forecast-emoji',
+                html: emojiHtml,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
             });
+
+            // Set up the interactive marker layer node. 
+            const marker = L.marker([area.lat, area.lng], { icon: emojiIcon});
 
             // Bind an interactive click popup displaying structured regional weather text
             marker.bindPopup(`
                 <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4;">
                     <strong style="color: #222; font-size: 13px;">${area.name} Sector</strong><br/>
-                    <span style="color: #555;">2-Hr Forecast:</span>
+                    <span style="color: #555;">2-Hr Condition:</span>
                     <strong style="color: #0066cc;">${area.forecast}</strong>
                 </div>
             `);
 
             // Attach this interactive node to our forecast layer canvas
             marker.addTo(forecastLayerGroup);
+        });
+    }
+
+
+    // UI Engine 3: Renders minimalist, tiny flat 2D icons for an intuitive microcosm view
+    function renderMicroTaxiAssets() {
+        // Clean out the previous frame's assets to keep memory usage exceptionally light
+        taxiLayerGroup.clearLayers();
+
+        // Standardize a miniature, borderless text canvas for our 2D vehicle asset
+        const taxiHtml = `<div style="
+            font-size: 10px;
+            opacity: 0.85;
+            cursor: default;
+            user-select: none;
+        ">🚕</div>`;
+
+        // Loop through all buffered live locations and drop them as flat typography nodes
+        liveTaxiLocations.forEach(taxi => {
+            // Validate that coordinates are numbers before rendering
+            if (taxi && typeof taxi.lat === 'number' && typeof taxi.lng === 'number') {
+                const microIcon = L.divIcon({
+                    className: 'micro-taxi-asset',
+                    html: taxiHtml,
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6]
+                });
+
+                // Instantiate a flat, non-interactive marker (removes popup heavy overhead)
+                const assetMarker = L.marker([taxi.lat, taxi.lng], {
+                    icon: microIcon,
+                    interactive: false // Keeps map panning lightning fast and lightweight
+                });
+
+                assetMarker.addTo(taxiLayerGroup);
+            }
         });
     }
     // ----------------------------------------------------------------
@@ -391,30 +465,16 @@
         // All coordinates in that feature are **available** taxis.
         const coords = data.features[0].geometry.coordinates; // array of [lng, lat] pairs. You can look at the JSON object to see the array
 
-        // Remove all previous markers from the map
-        taxiLayerGroup.clearLayers();
+        // Buffer our coordinates from the fetch response into our global cache array
+        liveTaxiLocations = coords.map(pair => ({
+            lat: pair[1],
+            lng: pair[0]
+        }));
 
+        // Fire our crisp micro-taxi emoji engine to render the microcosm
+        renderMicroTaxiAssets();
 
-        let count = 0;
-        // Loop over every coordinate pair
-        for (const pair of coords) {
-          const lng = pair[0];   // longitude
-          const lat = pair[1];   // latitude
-
-
-          // Leaflet requires [lat, lng] - we swap the order here. 
-          // Create a small blue circle marker and add it to the layer group.
-          // Then attach a popup that simply says "Available taxi".
-          L.circleMarker([lat, lng], {
-            radius: 4, 
-            fillColor: '#0077b6', 
-            color: '#005f8c', 
-            weight: 1, 
-            fillOpacity: 0.8
-          }).addTo(taxiLayerGroup).bindPopup('🚖 Available taxi');  // human-centered, all-ages text that everyone can understand
-
-          count++;
-        }
+        let count = liveTaxiLocations.length;
 
         // Update the on-screen taxi count badge
         document.getElementById('count-number').textContent = count.toLocaleString('en-SG');   // gives you x,xxx (with comma) and guarantees the text width is predictable
