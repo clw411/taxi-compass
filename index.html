@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Taxi Compass - Day 11</title>
+  <title>Taxi Compass - Day 12</title>
 
   <!-- Referrer policy ensures tile servers get the Referer header, avoiding 403 errors-->
   <meta name="referrer" content="origin-when-cross-origin">
@@ -54,6 +54,23 @@
       max-height: 50px; /* Hard constraint for the badge container */
     }
 
+    /* Dedicated Vicinity Information Badge Panel Box Layout */
+    #vicinity-badge {
+        position: absolute;
+        top: 120px;
+        right: 10px;
+        z-index: 9999;
+        background: rgba(255, 255, 255, 0.95);
+        color: #111;
+        padding: 12px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: system-ui, sans-serif;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        line-height: 1.5;
+        width: 210px;
+    }
+
     /* Status box - sits at bottom-left, shows what the app is doing (loading, errors, success) */
     #status {
         position: absolute; 
@@ -69,19 +86,16 @@
         height: auto;
     }
 
-    /* Refresh button - centered at the bottom of the screen */
-    #refresh-btn {
+    /* Primary Control Action Interface Tray Buttons Setup */
+    #locate-btn, #refresh-btn {
         position: absolute; 
         bottom: 20px; 
-        left: 50%; 
-        transform: translateX(-50%);   /* perfect horizontal centering */
         z-index: 1000; 
-        padding: 12px 24px; 
-        background: #0077b6; 
+        padding: 12px 20px; 
         color: white;
         border: none; 
         border-radius: 6px; 
-        font-size: 16px; 
+        font-size: 15px; 
         font-weight: bold;
         cursor: pointer; 
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
@@ -90,11 +104,23 @@
         white-space: nowrap;
     }
 
+    #locate-btn {
+        left: calc(50% - 115px);
+        transform: translateX(-50%);
+        background: #2a9d8f;
+    }
+    #locate-btn:hover:not(:disabled) {background: #218074; }
+
+    #refresh-btn {
+        left: calc(50% + 115px);
+        transform: translateX(-50%);
+        background: #0077b6;
+    }
     /* Interactive hover state for high interaction */
     #refresh-btn:hover:not(:disabled) { background: #005f8c; }
 
     /* When the button is disabled (e.g. during cooldown), make it look inactive */
-    #refresh-btn:disabled { opacity: 0.6; cursor: default; }
+    #refresh-btn:disabled, #locate-btn:disabled { opacity: 0.6; cursor: default; }
 
     /* 3. Mobile Responsive Layer Overhaul (Screen widths up to 768px) */
     @media (max-width: 768px) {
@@ -114,7 +140,7 @@
       /* Flatten the counter badge into a clean header tab directly beneath the title card */
       #taxi-count {
         position: absolute;
-        top: 48px;
+        top: 44px;
         right: 8px;
         left: 55px;
         width: auto;
@@ -127,15 +153,37 @@
         box-shadow: 0 1px 3px rgba(0,0,0,0.2);
       }
 
+      #vicinity-badge {
+        top: 80px;
+        right: 8px;
+        left: 55px;
+        width: auto;
+        font-size: 11px;
+        padding: 8px 10px;
+        text-align: center;
+        border-radius: 4px;
+      }
+
       /* Stack data telemetry notes cleanly at the bottom right, just above the active button strip  */
       #status {
-        bottom: 75px; 
+        bottom: 115px; 
         left: auto;   
         right: 12px;               
         top: auto;
-        font-size: 11px;
-        padding: 5px 10px;
+        font-size: 10px;
+        padding: 4px 8px;
         border: 1px solid #333;                    
+      }
+
+      #locate-btn {
+        bottom: 64px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 24px);
+        max-width: 450px;
+        padding: 12px 0px;
+        font-size: 14px;
+        border-radius: 6px;
       }
 
       /* Transform layout into an expansive, thumb-optimized structural bottom action button */
@@ -145,12 +193,11 @@
         transform: translateX(-50%);
         width: calc(100% - 24px);
         max-width: 450px;
-        padding: 14px 0px;
-        font-size: 15px;
-        border-radius: 8px;
+        padding: 12px 0px;
+        font-size: 14px;
+        border-radius: 6px;
       }
     }
-
   </style>
 </head>
 <body>
@@ -164,8 +211,14 @@
   <!-- Taxi count badge - solid, dark box at top-right, shows total available taxis. (inline style to absolutely guarantee visibility with CSS conflicts)-->
   <div id="taxi-count">🚖 <span id="count-number">-</span> taxis available</div>
   
+  <!-- Dedicated vicinity badge interface node -->
+  <div id="vicinity-badge" style="display: none;">📍 Compass Info Loading...</div>
+
   <!-- On-screen status indicator - shows messages like "Loading...", or errors -->
   <div id="status">⏳ Loading... </div>
+
+  <!-- On-screen location -->
+  <button id="locate-btn">📍 Find Nearby Taxis</button>
 
   <!-- Refresh button - triggers a new data fetch -->
   <button id="refresh-btn">🔄 Refresh Taxis </button>
@@ -182,7 +235,7 @@
 
 
     // ==============================================================
-    // 🌐 NEW GLOBAL ENGINE STORAGE (Tuesday Stream Integration)
+    // 🌐 GLOBAL ENGINE STORAGE
     // ==============================================================
 
     // Stores the raw geographic [lng, lat] coordinate arrays streams from LTA
@@ -194,8 +247,15 @@
     // Leaflet Layer Groups to manage the visual rendering of markers on the map screen
     let forecastLayerGroup = L.layerGroup();
 
+    // Leaflet marker object reference to track the user position on map updates
+    let userLocationMarker = null;
+
+    // Caches active coordinates to maintain localized distancec checking context during taxi refreshes
+    let lastKnownUserCoords = null;
+
+
     // ===============================================================
-    // ☁️ NEW API FETCH ENGINE LINES (Tuesday Stream Integration)
+    // ☁️ API FETCH ENGINE LINES 
     // ===============================================================
 
     // Fetch Engine 2: Pulls live real-time vehicle coordinates from LTA Transit Servers
@@ -420,7 +480,9 @@
         // Update the on-screen taxi count badge
         document.getElementById('count-number').textContent = count.toLocaleString('en-SG');   // gives you x,xxx (with comma) and guarantees the text width is predictable
 
-        // Show success message in the status box
+        // Automatically update vicinity metrics on data updates if GPS context exists
+        updateVicinityTelemetry();
+
         setStatus('✅ ', 'Map tracking system updated.');
       } catch (e) {
         // If the request was aborted (timed out), show a specific error
@@ -434,13 +496,115 @@
       }
     }
 
-    // Initial load - fetch taxis as soon as the page opens
-    // 4. Initial load
+    // --------------------------------------------------------
+    // 4. Initial load & Background Concurrent Engines
+    // ---------------------------------------------------------
+    // Fire primary LTA coordinates vector collection loop on startup
     fetchTaxis();
 
-    // Fire the new concurrent background data pipelines
+    // Fire the background v2 meteorological planning sector pipeline
     getWeatherForecastData();
 
+
+    // =========================================================
+    // 📍 GEOLOCATION & PROXIMITY CALCULATIONS CORE
+    // =========================================================
+
+    // --- MATHEMATICAL HAVERSINE DISTANCE ENGINE ---
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371;  // Planet Earth volumetric mean radius in kilometers
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    // --- MAIN GEOLOCATION WRAPPER LOOP ---
+    function processUserLocation() {
+        if (!navigator.geolocation) {
+            alert('GPS tracking not supported by your browser.');
+            return;
+        }
+
+        const locateBtn = document.getElementById('locate-btn');
+        locateBtn.textContent = '🛰️ Locking GPS...';
+        locateBtn.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                lastKnownUserCoords = { lat, lng};
+
+                console.log("🛰️ GPS POSITION SECURED:", lastKnownUserCoords);
+
+                if (userLocationMarker) {
+                    userLocationMarker.setLatLng([lat, lng]);
+                } else {
+                    const userIcon = L.divIcon({
+                        html: `<div style="font-size: 26px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); animation: pulse 2s infinite;">🔵</div>`,
+                        className: 'user-gps-node',
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    });
+                    userLocationMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
+                }
+
+                map.setView([lat, lng], 14);
+                updateVicinityTelemetry();
+
+                locateBtn.textContent = '📍 Find Nearby Taxis';
+                locateBtn.disabled = false;
+            },
+            (error) => {
+                alert(`GPS Lock Failed: ${error.message}`);
+                locateBtn.textContent = '📍 Find Nearby Taxis';
+                locateBtn.disabled = false;
+                console.error("Geolocation verification break:", error);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    }
+
+    // --- PROXIMITY CALCULATION ENGINE ---
+    function updateVicinityTelemetry() {
+        if (!lastKnownUserCoords) return;
+
+        const uLat = lastKnownUserCoords.lat;
+        const uLng = lastKnownUserCoords.lng;
+
+        let taxisNearbyCount = 0;
+        const searchRadiusKm = 1.5;
+
+        liveTaxiLocations.forEach(taxi => {
+            const dist = calculateDistance(uLat, uLng, taxi.lat, taxi.lng);
+            if (dist <= searchRadiusKm) taxisNearbyCount++;
+        });
+
+        let closestForecastArea = null;
+        let shortestForecastDistance = Infinity;
+
+        liveForecastAreas.forEach(area => {
+            const dist = calculateDistance(uLat, uLng, area.lat, area.lng); 
+            if (dist < shortestForecastDistance) {
+                shortestForecastDistance = dist;
+                closestForecastArea = area;
+            }
+        });
+
+        const vicinityEl = document.getElementById('vicinity-badge');
+        if (closestForecastArea) {
+            vicinityEl.innerHTML = `📍 <strong>Nearest Sector:</strong> ${closestForecastArea.name} (${closestForecastArea.forecast})<br/>🚖 <strong>Taxis within 1.5km:</strong> ${taxisNearbyCount} vehicles`;
+            vicinityEl.style.display = 'block';
+        }
+    }
 
     // --------------------------------------------------------
     // 5. Refresh button with 60-second cooldown
@@ -481,6 +645,9 @@
         // After fetch finishes, start 60-second cooldown regardless of outcome
         startCooldown();
     });
+
+    // Register active geolocation trigger click listener node connection
+    document.getElementById('locate-btn').addEventListener('click', processUserLocation);
   </script>
 </body>
 </html>
