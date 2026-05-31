@@ -12,14 +12,21 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    /* Make the map fill the entire browser window */
-    html, body, #map { height: 100%; margin: 0; }
+    /* 1. Base Map Window Geometry */
+    html, body, #map {
+        height: 100%; 
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    /* 2. Desktop Interface Components */
     .map-title {
       position: absolute;
       top: 10px;
       right: 10px;
       z-index: 1000;
-      background: rgba(255,255,255,0.9);
+      background: rgba(255,255,255,0.95);
       padding: 8px 14px;
       border-radius: 6px;
       font-family: system-ui, sans-serif;
@@ -31,20 +38,20 @@
 
     #taxi-count {
       position: absolute;
-      top: 70px;
+      top: 60px;
       right: 10px;
       z-index: 9999;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.85);
       color: white;
-      padding: 14px 0px;
-      width: 220px;
-      text-align: center;
-      border-radius: 4px;
+      padding: 12px 16px;
+      border-radius: 6px;
       font-family: system-ui, sans-serif;
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 500;
-      box-shadow: 0 2 px 6px rgba(0,0,0,0.3);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       white-space: nowrap;
+      height: auto; /* Strictly prevents vertical stretching */
+      max-height: 50px; /* Hard constraint for the badge container */
     }
 
     /* Status box - sits at bottom-left, shows what the app is doing (loading, errors, success) */
@@ -59,6 +66,7 @@
         font-family: monospace; 
         font-size: 14px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        height: auto;
     }
 
     /* Refresh button - centered at the bottom of the screen */
@@ -68,7 +76,7 @@
         left: 50%; 
         transform: translateX(-50%);   /* perfect horizontal centering */
         z-index: 1000; 
-        padding: 10px 20px; 
+        padding: 12px 24px; 
         background: #0077b6; 
         color: white;
         border: none; 
@@ -79,38 +87,70 @@
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         font-family: system-ui, sans-serif;
         transition: background 0.2s ease, opacity 0.2s ease;
+        white-space: nowrap;
     }
 
     /* Interactive hover state for high interaction */
-    #refresh-btn:hover:not(:disabled) {
-      background: #005f8c;
-    }
+    #refresh-btn:hover:not(:disabled) { background: #005f8c; }
 
     /* When the button is disabled (e.g. during cooldown), make it look inactive */
     #refresh-btn:disabled { opacity: 0.6; cursor: default; }
 
-    /* Responsive adjustments for mobile layouts to guarantee cross-browser/device compatibility */
-    @media (max-width: 600px) {
+    /* 3. Mobile Responsive Layer Overhaul (Screen widths up to 768px) */
+    @media (max-width: 768px) {
+      /* Scale, compress, and shift header text rightwards to let map controls breathe */
       .map-title {
-        font-size: 12px;
-        width: 220px;
+        top: 8px;
+        right: 8px;
+        left: 55px;
+        font-size: 11px;
+        padding: 6px 10px;
         text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
+
+      /* Flatten the counter badge into a clean header tab directly beneath the title card */
       #taxi-count {
-        top: auto;
-        bottom: 80px;
-        left: 50px;
-        transform: translateX(-50%);
+        position: absolute;
+        top: 48px;
+        right: 8px;
+        left: 55px;
+        width: auto;
+        height: auto;
+        max-height: 35px;
+        font-size: 11px;
+        padding: 5px 10px;
+        text-align: center;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
       }
+
+      /* Stack data telemetry notes cleanly at the bottom right, just above the active button strip  */
       #status {
-        /* Move the status box out of the way of the bottom-centered refresh button */
-        bottom: auto;                   /* Cancels out the desktop bottom position */
-        top: 130px;                     /* Anchors it cleanly near the top right instead */
-        right: 10px;
-        left: auto;
-        font-size: 12px;
+        bottom: 75px; 
+        left: auto;   
+        right: 12px;               
+        top: auto;
+        font-size: 11px;
+        padding: 5px 10px;
+        border: 1px solid #333;                    
+      }
+
+      /* Transform layout into an expansive, thumb-optimized structural bottom action button */
+      #refresh-btn {
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 24px);
+        max-width: 450px;
+        padding: 14px 0px;
+        font-size: 15px;
+        border-radius: 8px;
       }
     }
+
   </style>
 </head>
 <body>
@@ -122,25 +162,7 @@
   <div class="map-title">🚖 Taxi Compass — street-hailable taxis, made visible</div>
 
   <!-- Taxi count badge - solid, dark box at top-right, shows total available taxis. (inline style to absolutely guarantee visibility with CSS conflicts)-->
-  <div id="taxi-count"
-        style="
-          position: absolute;
-          top: 70px;
-          right: 10px;
-          z-index: 9999;
-          background: rgba(0,0,0,0.8);
-          color: white;
-          padding: 14px 0px;              /* vertical padding only, horizontal is auto-centered */ 
-          width: 220px;                   /* fixed width for a consistent box shape */
-          text-align: center;
-          border-radius: 4px;
-          font-family: system-ui, sans-serif;
-          font-size: 18px;
-          font-weight: 500;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-          white-space: nowrap;
-          ">
-        🚖<span id="count-number">-</span> taxis available</div>
+  <div id="taxi-count">🚖 <span id="count-number">-</span> taxis available</div>
   
   <!-- On-screen status indicator - shows messages like "Loading...", or errors -->
   <div id="status">⏳ Loading... </div>
@@ -163,66 +185,18 @@
     // 🌐 NEW GLOBAL ENGINE STORAGE (Tuesday Stream Integration)
     // ==============================================================
 
-    // Caches raw NEA reporting station metadata and real-time temperature readings
-    let liveWeatherStations = [];
-
     // Stores the raw geographic [lng, lat] coordinate arrays streams from LTA
     let liveTaxiLocations = [];
 
     // Caches regional 2-hour verbal forecast synopses mapped to sector centers
-    let liveForecastAras = []; 
+    let liveForecastAreas = []; 
 
     // Leaflet Layer Groups to manage the visual rendering of markers on the map screen
-    let weatherLayerGroup = L.layerGroup();
     let forecastLayerGroup = L.layerGroup();
-
-    // Leaflet Heat Layer handle to manage the real-time transit density overlay
-    let taxiHeatLayer = null;
 
     // ===============================================================
     // ☁️ NEW API FETCH ENGINE LINES (Tuesday Stream Integration)
     // ===============================================================
-
-    // Fetch Engine 1: Real-time air temperature metrics
-    async function getWeatherData() {
-        try {
-            console.log("🌡️ FETCHING LIVE WEATHER TEMPERATURE DATA...");
-
-            // Establish network request to the public NEA climate monitoring endpoint
-            const response = await fetch('https://api.data.gov.sg/v1/environment/air-temperature');
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-            const data = await response.json();
-
-            // Extract the separate geographic station logs and the current sensor readings
-            const stations = data.metadata.stations;
-            const readings = data.items[0].readings;
-
-            // Deep-map arrays to pair structural metadata directly with active climate readings
-            liveWeatherStations = stations.map(station => {
-                // Cross-reference sensor IDs to stitch matching telemetry together
-                const reading = readings.find(r => r.station_id === station.id);
-                return {
-                    id: station.id,
-                    name: station.name,
-                    lat: station.location.latitude,
-                    lng: station.location.longitude,
-                    temp: reading ? reading.value : null
-                };
-            }).filter(s => s.temp !== null); // Drop offline or non-reporting stations from memory
-
-            console.log(`📦 TEMPERATURE METRICS DATA RECEIVED. Loaded ${liveWeatherStations.length} reporting towers.`);
-
-            // UI Trigger: Hand the freshly cached dataset over to the visual renderer
-            renderWeatherMarkers();
-
-            // Paint the synchronized layer canvas onto the visible Leaflet map screen
-            weatherLayerGroup.addTo(map);
-
-        } catch (error) {
-            console.error("❌ Error fetching Air Temperature:", error);
-        }
-    }
 
     // Fetch Engine 2: Pulls live real-time vehicle coordinates from LTA Transit Servers
     async function getTaxiData() {
@@ -293,39 +267,6 @@
         } catch (error) {
             console.error("❌ Error fetching v2 Weather Forecast:", error);
         }
-    }
-
-    // UI Engine 1: Translates cached weather telemetry into visual map typography
-    function renderWeatherMarkers() {
-        // Clear out any old markers from the canvas before drawing fresh ones
-        weatherLayerGroup.clearLayers();
-
-        // Loop through every active reporting tower stored in our global cache
-        liveWeatherStations.forEach(station => {
-            // Define custom, borderless HTML styling to make the temperature read cleanly
-            const labelHtml = `<div style="
-                background: rgba(255, 255, 255, 0.9);
-                border: 1px solid #333;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 11px;
-                color: #111;
-                white-space: nowrap;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-            ">${station.name}: ${station.temp}°C</div>`;
-
-            // Create a custom Leaflet DivIcon to inject our custom HTML text onto the map, with auto-scaling boundaries
-            const textIcon = L.divIcon({
-                className: 'custom-temp-label',
-                html: labelHtml,
-                iconSize: [null, null], // Allows the wrapper container to scale dynamically
-                iconAnchor: [60, 10]    // Slightly shifts the anchor to center the wider badge 
-            });
-
-            // Instantiate the marker at the tower's lat/lng and attach it to our weather layer canvas
-            L.marker([station.lat, station.lng], { icon: textIcon })
-             .addTo(weatherLayerGroup);
-        });
     }
 
     // UI Engine 2 Upgraded: Translates text forecasts into dynamic visual emojis
@@ -480,7 +421,7 @@
         document.getElementById('count-number').textContent = count.toLocaleString('en-SG');   // gives you x,xxx (with comma) and guarantees the text width is predictable
 
         // Show success message in the status box
-        setStatus('✅ ', `${count.toLocaleString('en-SG')} taxis loaded live.`);
+        setStatus('✅ ', 'Map tracking system updated.');
       } catch (e) {
         // If the request was aborted (timed out), show a specific error
         if (e.name === 'AbortError') {
@@ -498,8 +439,6 @@
     fetchTaxis();
 
     // Fire the new concurrent background data pipelines
-    getWeatherData();
-    getTaxiData();
     getWeatherForecastData();
 
 
