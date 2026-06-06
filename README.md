@@ -49,8 +49,8 @@ This engine checks thousands of incoming vehicle nodes and identifies the shorte
 
 * **Map Interface:** [Leaflet.js (v1.9.4)](https://leafletjs.com/) via CDN
 * **Map Typography & Styling:** [CartoDB Light Tiles](https://carto.com/basemaps/) (`© OpenStreetMap`, `© CARTO`)
-* **Vehicle Location Data:** [Land Transport Authority (LTA) Datamall Live Taxi Availability API](https://beta.data.gov.sg/)
-* **Weather Forecast Data:** [GovTech Singapore v2 Real-Time Meteorological API Stream](https://beta.data.gov.sg/)
+* **Vehicle Location Data:** [Land Transport Authority (LTA) Datamall Live Taxi Availability API](https://api.data.gov.sg/v1/transport/taxi-availability)
+* **Weather Forecast Data:** [GovTech Singapore v2 Real-Time Meteorological API Stream](https://api-open.data.gov.sg/v2/real-time/api/two-hr-forecast)
 
 ---
 
